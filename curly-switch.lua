@@ -76,11 +76,11 @@ function load_variables(meta, current, prefix, variables)
 
     for k, v in pairs(current) do
 
+        local name = prefix .. k
         if type(v) == "table" then
 
             if pandoc.utils.type(v) == "Inlines" then
 
-                local name = prefix .. k
                 local value = expand_inlines(
                     meta,
                     v,
@@ -91,11 +91,11 @@ function load_variables(meta, current, prefix, variables)
 
                 variables[name] = value
             else
-                variables = load_variables(meta, v, prefix .. k .. ".", variables)
+                variables = load_variables(meta, v, name .. ".", variables)
             end
         -- A workaround for supporting other values (that are not handled as tables by Pandoc)
         elseif type(v) == "boolean" or type(v) == "string" then
-            variables[prefix .. k] = v
+            variables[name] = v
         end
     end
 
@@ -110,7 +110,7 @@ function process_metadata(meta)
     vars = load_variables(meta)
 
     -- Replaces the variables within the metadata
-    replace_metadata_placeholders(meta)
+    replace_metadata_placeholders(meta, nil)
 
     return meta
 end
@@ -174,12 +174,16 @@ end
 
 ---Replaces variables placeholders within metadata
 ---@param node pandoc.Meta
-function replace_metadata_placeholders(node)
+---@param prefix table
+function replace_metadata_placeholders(node, prefix)
+
+    prefix = prefix or ""
 
     for k, v in pairs(node) do
 
         if type(v) == "table" then
 
+            local name = prefix .. k
             if pandoc.utils.type(v) == "Inlines" then
 
                 local text = pandoc.utils.stringify(v)
@@ -189,12 +193,15 @@ function replace_metadata_placeholders(node)
                 -- representation (mainly writing boolean values without quotes)
                 if value == nil then
                     value = to_meta_value(text)
+                else
+                    -- Update the variable value, since the associated metadata referenced one or more variables
+                    vars[name] = value
                 end
 
                 node[k] = value
             else
                 -- Go on with replacement recursion
-                replace_metadata_placeholders(v)
+                replace_metadata_placeholders(v, name .. ".")
             end
         end
     end
@@ -292,7 +299,6 @@ return {
     },
     {
         RawBlock = replace_latex_placeholders,
-        Str = replace_markdown_placeholders
-        
+        Str = replace_markdown_placeholders   
     }
 }
