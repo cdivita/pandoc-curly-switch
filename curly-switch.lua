@@ -83,7 +83,7 @@ function load_variables(meta, current, prefix, variables)
                     meta,
                     v,
                     function (expression)
-                        io.stdout:write(string.format("Variable %s cannot be resolved (expression: %s)", name, expression))
+                        io.stderr:write(string.format("Variable %s cannot be resolved (expression: %s)\n", name, expression))
                     end
                 )
 
@@ -220,7 +220,7 @@ function replace_variables(variables, text, callback)
 
                     -- Maybe the variable is a boolean
                     if not variables[v] and type(variables[v]) ~= "boolean" then
-                        io.stdout:write(string.format("Variable %s is not defined", v))
+                        io.stderr:write(string.format("Variable %s is not defined\n", v))
                     else
                         return pandoc.utils.stringify(variables[v])
                     end

@@ -1,0 +1,25 @@
+name: Filter Test
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - "**/README.md"
+      - LICENSE
+  schedule:
+    # At 09:00am each Monday
+    - cron: "0 9 * * 1"
+jobs:
+  Build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v3
+      - name: Run pandoc
+        uses: docker://pandoc/core:latest
+        with:
+          args: >-  # allows you to break string into multiple lines
+            --lua-filter curly-switch.lua
+            -t markdown
+            -o switched.md
+            test/info.md
