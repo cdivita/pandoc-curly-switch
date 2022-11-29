@@ -10,6 +10,9 @@ The following syntax is supported for defining variables placeholders:
 
 Variable can be referenced using an object-like notation, using any of the supported syntax. For example, having the following metadata block:
 ```yaml
+github:
+  organization: https://github.com/cdivita
+  url: ${github.organization}/pandoc-curly-switch
 filter:
   name: curly-switch
   language: lua
@@ -17,9 +20,11 @@ filter:
     type: Apache License, 2.0
   developers:
     - name: Claudio Di Vita
-      url: https://github.com/cdivita
+      url: ${github.organization}
 ```
 
 Therefore, filter's name can be referenced through `${filter.name}` or `!filter.name!`.
+
+Variables are replaced also within metadata block itself and list elements can be referenced using 1-based indexes. For example, `${filter.developers.1.name}` is replaced with `Claudio Di Vita`.
 
 The exclamation marks syntax (`!...!`) is suggested within LaTeX blocks, because it doesn't clash with math mode and doesn't break syntax highlighting tools.
