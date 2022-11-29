@@ -1,4 +1,7 @@
 ---
+github:
+  organization: https://github.com/cdivita
+  url: ${github.organization}/pandoc-curly-switch
 filter:
   name: curly-switch
   language: lua
@@ -6,9 +9,12 @@ filter:
     type: Apache License, 2.0
   developers:
     - name: Claudio Di Vita
-      url: https://github.com/cdivita
+      url: ${github.organization}
 ---
 The variables within this document are:
+
+- `github.organization`: ${github.organization}
+- `github.url`: ${github.url} 
 - `filter.name`: ${filter.name}
 - `filter.language`: ${filter.language}
 - `filter.license.type`: ${filter.license.type}
