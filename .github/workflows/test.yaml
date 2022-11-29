@@ -25,6 +25,8 @@ jobs:
             -t markdown
             -o ${TARGET_FILE}
             test/info.md
+      - name: Test
+        run: ls -al
       - name: Check variables replacement 
         run: >-
           grep -q "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}" ${TARGET_FILE} && \
