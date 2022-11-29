@@ -1,5 +1,7 @@
-local system = require "pandoc.system"
-local path = require "pandoc.path"
+PANDOC_VERSION:must_be_at_least(
+    "2.17",
+    "At least pandoc %s is required (current: %s), since pandoc.utils.type() is used"
+)
 
 -- The pattern for curly variables
 local curly_variables = "${([%w-%.]+)}"
@@ -83,7 +85,7 @@ function load_variables(meta, current, prefix, variables)
                     meta,
                     v,
                     function (expression)
-                        io.stderr:write(string.format("Variable %s cannot be resolved (expression: %s)\n", name, expression))
+                        --io.stderr:write(string.format("Variable %s cannot be resolved (expression: %s)\n", name, expression))
                     end
                 )
 
