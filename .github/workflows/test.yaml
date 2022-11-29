@@ -23,7 +23,7 @@ jobs:
           args: >-  # allows you to break string into multiple lines
             --lua-filter curly-switch.lua
             -t markdown
-            -o ${TARGET_FILE}
+            -o ${{ env.TARGET_FILE }}
             test/info.md
       - name: Test
         run: ls -al
