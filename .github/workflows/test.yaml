@@ -12,6 +12,8 @@ on:
 jobs:
   Build:
     runs-on: ubuntu-latest
+    env:
+      TARGET_FILE: test.md
     steps:
       - name: Check out repository
         uses: actions/checkout@v3
@@ -21,5 +23,11 @@ jobs:
           args: >-  # allows you to break string into multiple lines
             --lua-filter curly-switch.lua
             -t markdown
-            -o switched.md
+            -o ${TARGET_FILE}
             test/info.md
+      - name: Check variables replacement 
+        run: >-
+          grep -q "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}" ${TARGET_FILE} && \
+          grep -q "lua" ${TARGET_FILE} && \
+          grep -q "Apache License, 2.0" ${TARGET_FILE} && \
+          grep -q "Claudio Di Vita" ${TARGET_FILE}
