@@ -1,4 +1,4 @@
-name: Filter Test
+name: Works with pandoc
 on:
   push:
     branches:

@@ -1,4 +1,4 @@
-[Works with pandoc](https://github.com/cdivita/pandoc-curly-switch/actions/workflows/test.yaml/badge.svg)
+![Works with pandoc](https://github.com/cdivita/pandoc-curly-switch/actions/workflows/pandoc.yaml/badge.svg)
 
 # pandoc-curly-switch
 A pandoc Lua filter for referencing metadata values within a document, thus applying variable substitution.
