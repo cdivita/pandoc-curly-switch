@@ -2,7 +2,6 @@
 
 # curly-switch
 A [pandoc](https://pandoc.org/) [Lua filter](https://pandoc.org/lua-filters.html) for referencing metadata values within a document, thus applying variable substitution.
-
 ## Referencing variables
 Every document metadata, defined within the [YAML metadata block](https://pandoc.org/MANUAL.html#extension-yaml_metadata_block) or through [--metadata](https://pandoc.org/MANUAL.html#option--metadata)/[--metadata-file](https://pandoc.org/MANUAL.html#option--metadata-file) arguments, can be referenced as variable within the document itself. During the conversion, the variables placeholders are replaced with their effective values.
 
@@ -33,6 +32,12 @@ Variables are replaced also within metadata block itself and list elements can b
 
 The exclamation marks syntax (`!...!`) is suggested within LaTeX blocks, because it doesn't clash with math mode and doesn't break syntax highlighting tools.
 
+## Potential issues with `tex_math_dollars` extension
+When using the  the curly brackets syntax (`${...}`) since the [tex_math_dollars](https://pandoc.org/MANUAL.html#extension-tex_math_dollars) extension is enabled by default, based on the expression content issues can be experienced, due to wrong metadata parsing.
+
+To avoid such issues, the following options are available:
+- Escape the `$` character with a backslash `\$`: for example, `\${my.variable}`
+- Disable the [tex_math_dollars](https://pandoc.org/MANUAL.html#extension-tex_math_dollars) extension using the [-f/--from](https://pandoc.org/MANUAL.html#option--from): `-f markdown-tex_math_dollars`
 ## Installation
 As any pandoc Lua filter, `curly-switch` can be used without special installation, just by passing the respective `.lua` file path to `pandoc` using the `--lua-filter/-L` argument.
 
