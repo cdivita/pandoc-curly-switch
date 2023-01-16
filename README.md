@@ -33,7 +33,7 @@ Variables are replaced also within metadata block itself and list elements can b
 The exclamation marks syntax (`!...!`) is suggested within LaTeX blocks, because it doesn't clash with math mode and doesn't break syntax highlighting tools.
 
 ## Potential issues with `tex_math_dollars` extension
-When using the  the curly brackets syntax (`${...}`) since the [tex_math_dollars](https://pandoc.org/MANUAL.html#extension-tex_math_dollars) extension is enabled by default, based on the expression content issues can be experienced, due to wrong metadata parsing.
+When using the curly brackets syntax (`${...}`), since the [tex_math_dollars](https://pandoc.org/MANUAL.html#extension-tex_math_dollars) extension is enabled by default, depending on the expression used, due to _inaccurate_ metadata parsing, issues can be experienced.
 
 To avoid such issues, the following options are available:
 - Escape the `$` character with a backslash `\$`: for example, `\${my.variable}`
