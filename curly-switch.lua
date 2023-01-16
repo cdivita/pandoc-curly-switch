@@ -3,210 +3,89 @@ PANDOC_VERSION:must_be_at_least(
     "At least pandoc %s is required (current: %s), since pandoc.utils.type() is used"
 )
 
--- The pattern for curly variables
-local curly_variables = "${([%w-%.]+)}"
+-- The information about variables syntaxes
+local variable_syntaxes = {
 
--- The pattern for exclamation mark variables
-local exclamation_variables = "!([%w-%.]+)!"
+    {
+        name = "curly",
+        pattern = "${([%w-%.]+)}",
+        format =  function(variable)
+            return string.format("${%s}", variable)
+        end
+    },
+    {
+        name = "exclamation",
+        pattern = "!([%w-%.]+)!",
+        format =  function(variable)
+            return string.format("!%s!", variable)
+        end
+    }
+}
 
 -- The document variables
 local vars = {}
 
----Expand Inlines to its value or to its expression (that can contains variables)
----- `context`: the table (usually the document metadata) to use for looking up variables values 
----- `inlines`: the Inlines element to expand
----- `no_expansion`: the callback function to invoke when an expression variable cannot be resolved
----
----@param context table
----@param inlines pandoc.Inlines
----@param no_expansion function
----@return any
-function expand_inlines(context, inlines, no_expansion)
+---Create a metadata element, based on its value type
+---@param value any
+---@return pandoc.MetaBool|pandoc.MetaString|nil
+local function as_meta_value(value)
 
-    local expanded = pandoc.Inlines(inlines)
-    for index, inline in ipairs({table.unpack(expanded)}) do
+    if value == "true" then
+        return pandoc.MetaBool(true)
+    elseif value == "false" then
+        return pandoc.MetaBool(false)
+    elseif value ~= nil then
+        return pandoc.MetaString(value)
+    end
 
-        local expression = pandoc.utils.stringify(inline)
-        for variable in string.gmatch(expression, curly_variables) do
+    return nil
+end
 
-            local node = context
-            for segment in string.gmatch(variable, "([%w-]+)") do
+---Applies URL encoding to a value
+---@param url string
+local function url_encode(value)
 
-                if node then
-                    node = node[segment]
-                else
-                    -- The referenced node does not exist, exit from the loop
-                    break
-                end
-            end
+    value = string.gsub (value, "([^0-9a-zA-Z !'()*._~-])", function (c) return string.format ("%%%02X", string.byte(c)) end)
+    value = string.gsub (value, " ", "+")
 
-            if node or type(node) == "boolean" then
-                expanded[index] = node
-            else
+    return value
+end
 
-                -- Invoke the callback about expansion status, if any
-                if no_expansion then
-                    no_expansion(expression)
-                end
-            end
+---Applies URL decoding to a value
+---@param url string
+local function url_decode(value)
+
+    value = string.gsub (value, "+", " ")
+    value = string.gsub (value, "%%(%x%x)", function(h) return string.char(tonumber(h,16)) end)
+
+    return value
+end
+
+---Indicates if an expression contains a variable reference
+---@param value string|pandoc.Inlines
+---@return boolean
+local function contains_variable(value)
+
+    local expression
+    if pandoc.utils.type(value) == "Inlines" then
+        expression = pandoc.utils.stringify(value)
+    else
+        expression = value
+    end
+
+    local contains = false
+    for _, syntax in ipairs(variable_syntaxes) do
+
+        contains = contains or string.match(expression, syntax.pattern)
+
+        -- If at least a syntax is matched, we can exit from the loop
+        if (contains) then
+            break
         end
     end
 
-    return expanded
+    return contains
 end
-
----Initializes the variables from document metadata
----- `meta`: the metadata root
----- `current`: the current metadata node
----- `prefix`: the context associated to the current metadata node
----- `variables`: the variables
----
----@param meta table
----@param current table
----@param prefix table
----@param variables table
-function load_variables(meta, current, prefix, variables)
-
-    prefix = prefix or ""
-    variables = variables or {}
-
-    if not current then
-        current = meta
-    end
-
-    for k, v in pairs(current) do
-
-        local name = prefix .. k
-        if type(v) == "table" then
-
-            if pandoc.utils.type(v) == "Inlines" then
-
-                local value = expand_inlines(
-                    meta,
-                    v,
-                    function (expression)
-                        --io.stderr:write(string.format("Variable %s cannot be resolved (expression: %s)\n", name, expression))
-                    end
-                )
-
-                variables[name] = value
-            else
-                variables = load_variables(meta, v, name .. ".", variables)
-            end
-        -- A workaround for supporting other values (that are not handled as tables by Pandoc)
-        elseif type(v) == "boolean" or type(v) == "string" then
-            variables[name] = v
-        end
-    end
-
-    return variables
-end
-
----Loads the document variables
----@param meta pandoc.Meta
----@return table
-function process_metadata(meta)
-
-    vars = load_variables(meta)
-
-    -- Replaces the variables within the metadata
-    replace_metadata_placeholders(meta, nil)
-
-    return meta
-end
-
----Replaces variables placeholders within LaTeX blocks
----@param r pandoc.RawBlock
----@return pandoc.RawBlock|nil
-function replace_latex_placeholders(r)
-
-    if r.format == "tex" then
-
-        return replace_variables(vars, r.text, function(text) return pandoc.RawBlock(r.format, text) end)
-    end
-
-    -- If nil is returned, the element is left unchanged
-end
-
----Replaces the variables placeholders within a header, also updating the identifier accordingly
----@param el pandoc.Header
----@return pandoc.Header
-function replace_header_placeholders(el)
-
-    return replace_variables(vars, pandoc.utils.stringify(el.content), function(text)
-
-        el.identifier = string.lower(string.gsub(string.gsub(text, "%s", "-"), "[^-%w]", ""))
-        el.content = pandoc.Span(text)
-
-        return el
-    end)
-
-    -- If nil is returned, the element is left unchanged
-end
-
----Replaces the variables placeholders within a link target
----@param el pandoc.Link
----@return pandoc.Link
-function replace_link_target_placeholders(el)
-
-    return replace_variables(vars, pandoc.utils.stringify(url_decode(el.target)), function(text)
-
-        -- If link target is an anchor, let be sure it's lowercase
-        if string.find(text, "#", 1, true) == 1 then
-            text = string.lower(text)
-        end
-
-        return pandoc.Link(el.content, text, el.title, el.attr)
-    end)
-
-    -- If nil is returned, the element is left unchanged
-end
-
----Replaces the variables placeholders within markdown elements
----@param el pandoc.Str
----@return pandoc.Span
-function replace_markdown_placeholders(el)
-
-    return replace_variables(vars, el.text, function(text) return pandoc.Span(text) end)
-
-    -- If nil is returned, the element is left unchanged
-end
-
----Replaces variables placeholders within metadata
----@param node pandoc.Meta
----@param prefix table
-function replace_metadata_placeholders(node, prefix)
-
-    prefix = prefix or ""
-
-    for k, v in pairs(node) do
-
-        if type(v) == "table" then
-
-            local name = prefix .. k
-            if pandoc.utils.type(v) == "Inlines" then
-
-                local text = pandoc.utils.stringify(v)
-                local value = replace_variables(vars, text, function (replaced) return to_meta_value(replaced) end)
-
-                -- If no replacement is done, let's normalize the metadata value
-                -- representation (mainly writing boolean values without quotes)
-                if value == nil then
-                    value = to_meta_value(text)
-                else
-                    -- Update the variable value, since the associated metadata referenced one or more variables
-                    vars[name] = value
-                end
-
-                node[k] = value
-            else
-                -- Go on with replacement recursion
-                replace_metadata_placeholders(v, name .. ".")
-            end
-        end
-    end
-end
-
 
 ---Replace the variables within a text with their values:
 ---- `variables` are the available variables for placehoders replacement
@@ -218,7 +97,7 @@ end
 ---@param text string
 ---@param callback function
 ---@return any
-function replace_variables(variables, text, callback)
+local function replace_variables(variables, text, callback)
 
     local resolve = function(text, pattern, callback)
 
@@ -240,53 +119,268 @@ function replace_variables(variables, text, callback)
         end
     end
 
-    -- Look for ${...} variables pattern
-    local resolved = resolve(text, curly_variables, callback)
+    local resolved
+    for _, syntax in ipairs(variable_syntaxes) do
 
-    -- Be aware that a variable could have been resolved to a boolean
-    if not resolved and type(resolved) ~= "boolean" then
+         -- Look for the variables pattern
+        resolved = resolve(text, syntax.pattern, callback)
 
-        -- Look for !...! variables pattern
-        resolved = resolve(text, exclamation_variables, callback)
+        -- Be aware that a variable could have been resolved to a boolean
+        if resolved or type(resolved) == "boolean" then
+            break
+        end
     end
 
     return resolved
 end
 
----Create a metadata element, based on its value type
----@param value any
----@return pandoc.MetaBool|pandoc.MetaString|nil
-function to_meta_value(value)
+---Expand variables with recursive expressions
+---- `variables`: the document variables
+---- `recursives`: the variables with recursive expressions
+---
+---@param variables table
+---@param recursives pandoc.Inlines
+---@return table
+local function expand_recursive_expressions(variables, recursives)
 
-    if value == "true" then
-        return pandoc.MetaBool(true)
-    elseif value == "false" then
-        return pandoc.MetaBool(false)
-    elseif value ~= nil then
-        return pandoc.MetaString(value)
+    local current_expansion = {}
+    local next_expansion = recursives
+
+    -- Let's expand variables with recursive expressions
+    repeat
+
+        current_expansion = next_expansion
+        next_expansion = {}
+
+        for _, name in ipairs(current_expansion) do
+
+            local expression = pandoc.utils.stringify(variables[name])
+            local value = replace_variables(variables, expression, function (replaced) return replaced end)
+    
+            -- Expansion has been made
+            if value then
+    
+                variables[name] = value
+    
+                -- Iterate over the supported variable syntaxes
+                for _, syntax in ipairs(variable_syntaxes) do
+
+                    -- Looking for missing variables or variables that need further expansion
+                    for unexpanded in string.gmatch(value, syntax.pattern) do
+        
+                        if not variables[unexpanded] then
+                            io.stderr:write(string.format("Variable %s cannot be expanded (expression: %s)\n", name, expression))
+                        else
+                            table.insert(next_expansion, name)
+                        end
+                    end
+                end
+            end
+        end
+    until not next(next_expansion)
+
+    return variables
+end
+
+---Initializes the variables from document metadata
+---- `meta`: the metadata root
+---- `current`: the current metadata node
+---- `prefix`: the context associated to the current metadata node
+---- `variables`: the variables
+---- `recursives`: the list of recursive variables (variables that reference other variables)
+---
+---@param meta table
+---@param current table
+---@param prefix table
+---@param variables table
+---@param recursives table
+local function parse_variables(meta, current, prefix, variables, recursives)
+
+    prefix = prefix or ""
+    variables = variables or {}
+    recursives = recursives or {}
+
+    if not current then
+        current = meta
     end
 
-    return nil
+    for k, v in pairs(current) do
+
+        local name = prefix .. k
+        if type(v) == "table" then
+
+            if pandoc.utils.type(v) == "Inlines" then
+
+                variables[name] = v
+                local expression = pandoc.utils.stringify(v)
+
+                if contains_variable(expression) then
+
+                    table.insert(recursives, name)
+                    io.stderr:write(string.format("Variable %s may requires additional expansion (expression: %s)\n", name, expression))
+                end
+
+            else
+                variables, recursives = parse_variables(meta, v, name .. ".", variables, recursives)
+            end
+        -- A workaround for supporting other values (that are not handled as tables by Pandoc)
+        elseif type(v) == "boolean" or type(v) == "string" then
+            variables[name] = v
+        end
+    end
+
+    return variables, recursives
 end
 
----Applies URL encoding to a value
----@param url string
-function url_encode(value)
+---Replaces variables placeholders within metadata
+---- `variables`: the variables
+---- `meta`: the metadata
+---- `prefix`: the context associated to the current metadata node
+---@param variables table
+---@param node pandoc.Meta
+---@param prefix string
+local function refresh_metadata(variables, meta, prefix)
 
-    value = string.gsub (value, "([^0-9a-zA-Z !'()*._~-])", function (c) return string.format ("%%%02X", string.byte(c)) end)
-    value = string.gsub (value, " ", "+")
+    prefix = prefix or ""
+    variables = variables or {}
 
-    return value
+    for k, v in pairs(meta) do
+
+        if type(v) == "table" then
+
+            local name = prefix .. k
+            if pandoc.utils.type(v) == "Inlines" then
+
+                local text = pandoc.utils.stringify(v)
+                local value = replace_variables(variables, text, function (replaced) return as_meta_value(replaced) end)
+
+                -- If no replacement is done, let's normalize the metadata value
+                -- representation (mainly writing boolean values without quotes)
+                if value == nil then
+                    value = as_meta_value(text)
+                end
+
+                meta[k] = value
+            else
+                -- Go on with replacement recursion
+                refresh_metadata(variables, v, name .. ".")
+            end
+        end
+    end
 end
 
----Applies URL decoding to a value
----@param url string
-function url_decode(value)
+---Loads the document variables
+---@param meta pandoc.Meta
+---@return table
+local function load_variables(meta)
 
-    value = string.gsub (value, "+", " ")
-    value = string.gsub (value, "%%(%x%x)", function(h) return string.char(tonumber(h,16)) end)
+    local variables, recursives = parse_variables(meta, nil, nil, nil, nil)
 
-    return value
+    local current_expansion = {}
+    local next_expansion = recursives
+
+    -- Let's expand variables with recursive expressions
+    repeat
+
+        current_expansion = next_expansion
+        next_expansion = {}
+
+        for _, name in ipairs(current_expansion) do
+
+            local expression = pandoc.utils.stringify(variables[name])
+            local value = replace_variables(variables, expression, function (replaced) return replaced end)
+    
+            -- Expansion has been made
+            if value then
+    
+                variables[name] = value
+    
+                -- Iterate over the supported variable syntaxes
+                for _, syntax in ipairs(variable_syntaxes) do
+
+                    -- Looking for missing variables or variables that need further expansion
+                    for unexpanded in string.gmatch(value, syntax.pattern) do
+        
+                        if not variables[unexpanded] then
+                            io.stderr:write(string.format("Variable %s cannot be expanded (expression: %s)\n", name, expression))
+                        else
+                            table.insert(next_expansion, name)
+                        end
+                    end
+                end
+            end
+        end
+    until not next(next_expansion)
+
+    return variables
+end
+
+---Loads the document variables
+---@param meta pandoc.Meta
+---@return table
+local function process_metadata(meta)
+
+    vars = load_variables(meta)
+
+    -- Replaces the variables within the metadata
+    return refresh_metadata(vars, meta, nil)
+end
+
+---Replaces variables placeholders within LaTeX blocks
+---@param r pandoc.RawBlock
+---@return pandoc.RawBlock|nil
+local function replace_latex_placeholders(r)
+
+    if r.format == "tex" then
+
+        return replace_variables(vars, r.text, function(text) return pandoc.RawBlock(r.format, text) end)
+    end
+
+    -- If nil is returned, the element is left unchanged
+end
+
+---Replaces the variables placeholders within a header, also updating the identifier accordingly
+---@param el pandoc.Header
+---@return pandoc.Header
+local function replace_header_placeholders(el)
+
+    return replace_variables(vars, pandoc.utils.stringify(el.content), function(text)
+
+        el.identifier = string.lower(string.gsub(string.gsub(text, "%s", "-"), "[^-%w]", ""))
+        el.content = pandoc.Span(text)
+
+        return el
+    end)
+
+    -- If nil is returned, the element is left unchanged
+end
+
+---Replaces the variables placeholders within a link target
+---@param el pandoc.Link
+---@return pandoc.Link
+local function replace_link_target_placeholders(el)
+
+    return replace_variables(vars, pandoc.utils.stringify(url_decode(el.target)), function(text)
+
+        -- If link target is an anchor, let be sure it's lowercase
+        if string.find(text, "#", 1, true) == 1 then
+            text = string.lower(text)
+        end
+
+        return pandoc.Link(el.content, text, el.title, el.attr)
+    end)
+
+    -- If nil is returned, the element is left unchanged
+end
+
+---Replaces the variables placeholders within markdown elements
+---@param el pandoc.Str
+---@return pandoc.Span
+local function replace_markdown_placeholders(el)
+
+    return replace_variables(vars, el.text, function(text) return pandoc.Span(text) end)
+
+    -- If nil is returned, the element is left unchanged
 end
 
 return {
