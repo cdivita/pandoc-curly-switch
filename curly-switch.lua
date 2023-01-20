@@ -134,52 +134,21 @@ local function replace_variables(variables, text, callback)
     return resolved
 end
 
----Expand variables with recursive expressions
----- `variables`: the document variables
----- `recursives`: the variables with recursive expressions
----
----@param variables table
----@param recursives pandoc.Inlines
----@return table
-local function expand_recursive_expressions(variables, recursives)
+---Expand an expression that containes variables placeholders
+---@param source string
+---@return string
+---@return boolean
+local function expand_expression(expression)
 
-    local current_expansion = {}
-    local next_expansion = recursives
+    local value = replace_variables(vars, url_decode(expression), function(text)
+        return text
+    end)
 
-    -- Let's expand variables with recursive expressions
-    repeat
+    if not value then
+        return expression, false
+    end
 
-        current_expansion = next_expansion
-        next_expansion = {}
-
-        for _, name in ipairs(current_expansion) do
-
-            local expression = pandoc.utils.stringify(variables[name])
-            local value = replace_variables(variables, expression, function (replaced) return replaced end)
-    
-            -- Expansion has been made
-            if value then
-    
-                variables[name] = value
-    
-                -- Iterate over the supported variable syntaxes
-                for _, syntax in ipairs(variable_syntaxes) do
-
-                    -- Looking for missing variables or variables that need further expansion
-                    for unexpanded in string.gmatch(value, syntax.pattern) do
-        
-                        if not variables[unexpanded] then
-                            io.stderr:write(string.format("Variable %s cannot be expanded (expression: %s)\n", name, expression))
-                        else
-                            table.insert(next_expansion, name)
-                        end
-                    end
-                end
-            end
-        end
-    until not next(next_expansion)
-
-    return variables
+    return value, true
 end
 
 ---Initializes the variables from document metadata
@@ -344,10 +313,13 @@ end
 ---@return pandoc.Header
 local function replace_header_placeholders(el)
 
+    -- If header content contains variables, in order to preserve the
+    -- formatting (if any) only the header identifier is updated.
+    --
+    -- The content will be updated by Str replacement
     return replace_variables(vars, pandoc.utils.stringify(el.content), function(text)
 
         el.identifier = string.lower(string.gsub(string.gsub(text, "%s", "-"), "[^-%w]", ""))
-        el.content = pandoc.Span(text)
 
         return el
     end)
@@ -355,22 +327,38 @@ local function replace_header_placeholders(el)
     -- If nil is returned, the element is left unchanged
 end
 
+---Replaces the variables placeholders within markdown elements
+---@param el pandoc.Image
+---@return pandoc.Image
+local function replace_image_placeholders(el)
+
+    -- Caption is not going to be expanded since it's an Inline,
+    -- it will updated by Str replacement
+
+    el.src = expand_expression(el.src)
+
+    if el.title then
+        el.title = expand_expression(el.title)
+    end
+
+    return el
+end
+
 ---Replaces the variables placeholders within a link target
 ---@param el pandoc.Link
 ---@return pandoc.Link
 local function replace_link_target_placeholders(el)
 
-    return replace_variables(vars, pandoc.utils.stringify(url_decode(el.target)), function(text)
+    local target = expand_expression(el.target)
 
-        -- If link target is an anchor, let be sure it's lowercase
-        if string.find(text, "#", 1, true) == 1 then
-            text = string.lower(text)
-        end
+    -- If link target is an anchor, let be sure it's lowercase
+    if string.find(target, "#", 1, true) == 1 then
+        target = string.lower(target)
+    end
 
-        return pandoc.Link(el.content, text, el.title, el.attr)
-    end)
+    el.target = target
 
-    -- If nil is returned, the element is left unchanged
+    return el
 end
 
 ---Replaces the variables placeholders within markdown elements
@@ -378,9 +366,8 @@ end
 ---@return pandoc.Span
 local function replace_markdown_placeholders(el)
 
-    return replace_variables(vars, el.text, function(text) return pandoc.Span(text) end)
-
     -- If nil is returned, the element is left unchanged
+    return replace_variables(vars, el.text, function(text) return pandoc.Span(text) end)
 end
 
 return {
@@ -389,6 +376,7 @@ return {
     },
     {
         Header = replace_header_placeholders,
+        Image = replace_image_placeholders,
         Link = replace_link_target_placeholders,
     },
     {
